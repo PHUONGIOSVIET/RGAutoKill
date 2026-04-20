@@ -1,0 +1,8 @@
+Package: com.yourname.skp-rgautokill
+Name: SKP - RG AutoKill
+Version: 1.0.0
+Architecture: iphoneos-arm64
+Description: AutoKill + OneHit + EXP x1000 + Speed for Soul Knight Prequel
+Author: yourname
+Section: Tweaks
+Depends: mobilesubstrate

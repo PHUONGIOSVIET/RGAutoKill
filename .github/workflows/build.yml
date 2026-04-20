@@ -1,0 +1,67 @@
+name: Build RGAutoKill.dylib
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:   # cho phép bấm Run thủ công trên web
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+    # ── 1. Checkout code ─────────────────────────────────────────────────────
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    # ── 2. Xcode version ─────────────────────────────────────────────────────
+    - name: Select Xcode
+      run: sudo xcode-select -s /Applications/Xcode.app
+
+    # ── 3. Build Lua 5.4 cho iOS ARM64 ───────────────────────────────────────
+    - name: Build Lua 5.4 (iOS ARM64)
+      run: |
+        curl -L https://www.lua.org/ftp/lua-5.4.6.tar.gz | tar xz
+        cd lua-5.4.6
+
+        SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+        CC="$(xcrun --sdk iphoneos --find clang)"
+        AR="$(xcrun --sdk iphoneos --find ar)"
+        RANLIB="$(xcrun --sdk iphoneos --find ranlib)"
+
+        FLAGS="-arch arm64 -isysroot $SDK -miphoneos-version-min=14.0 -O2 -DLUA_USE_IOS"
+
+        # Compile mỗi file .c riêng
+        for f in src/l*.c src/lua.c; do
+          [ -f "$f" ] || continue
+          name=$(basename ${f%.c})
+          $CC $FLAGS -c "$f" -o "src/${name}.o" 2>/dev/null || true
+        done
+        # loại bỏ main files
+        rm -f src/lua.o src/luac.o
+
+        $AR rcu src/liblua.a src/*.o
+        $RANLIB src/liblua.a
+
+        mkdir -p ../vendor/lua/include ../vendor/lua/lib
+        cp src/lua.h src/luaconf.h src/lualib.h src/lauxlib.h ../vendor/lua/include/
+        cp src/liblua.a ../vendor/lua/lib/liblua5.4.a
+        echo "✅ Lua build OK"
+
+    # ── 4. Clone ImGui ────────────────────────────────────────────────────────
+    - name: Clone ImGui
+      run: |
+        git clone --depth=1 https://github.com/ocornut/imgui vendor/imgui
+        echo "✅ ImGui cloned"
+
+    # ── 5. Build .dylib ───────────────────────────────────────────────────────
+    - name: Build RGAutoKill.dylib
+      run: bash build.sh
+
+    # ── 6. Upload artifact ───────────────────────────────────────────────────
+    - name: Upload dylib
+      uses: actions/upload-artifact@v4
+      with:
+        name: RGAutoKill-dylib
+        path: RGAutoKill.dylib
+        retention-days: 30

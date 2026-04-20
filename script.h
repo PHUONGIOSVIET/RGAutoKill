@@ -95,9 +95,16 @@ end
 -- ==========================================
 -- MAIN VARS
 -- ==========================================
-local RGCharacter = Class.fromName("RGCharacter")
-local CurrencyExp = Class.fromName("CurrencyExp")
+local RGCharacter     = Class.fromName("RGCharacter")
+local CurrencyExp     = Class.fromName("CurrencyExp")
 local CurrencyPeakExp = Class.fromName("CurrencyPeakExp")
+
+-- Debug search state
+local dbgPattern  = ""
+local dbgResults  = {}
+local dbgAsmList  = {}
+local dbgAsmCount = 0
+local dbgShow     = false
 
 local autoKill = false
 local oneHit = false
@@ -380,6 +387,50 @@ function OnDraw()
         ImGui.Text("Target camp: 8 + 2")
         ImGui.Text("EXP: x" .. tostring(math.floor(expMult)))
         ImGui.Text("Trang thai speed: " .. speedStatusText)
+
+        ImGui.Separator()
+        -- ===== DEBUG: tim class that cua game (HybridCLR hot-update) =====
+        local dbgToggle, dbgV = ImGui.Checkbox("Debug: tim class that", dbgShow)
+        if dbgToggle then dbgShow = dbgV end
+        if dbgShow then
+            ImGui.TextColored(1, 0.84, 0, 1, "Game dung HybridCLR — class thuc te load sau")
+            if ImGui.Button("Refresh assemblies") then
+                dbgAsmCount = Class.refresh()
+                dbgAsmList  = Class.assemblies()
+            end
+            ImGui.SameLine()
+            ImGui.Text("So assembly: " .. tostring(dbgAsmCount))
+            local ch, nv = ImGui.InputText("Tu khoa", dbgPattern, 64)
+            if ch then dbgPattern = nv end
+            if ImGui.Button("Tim class") then
+                dbgResults = Class.list(dbgPattern, 120)
+            end
+            ImGui.SameLine()
+            if ImGui.Button("Copy ket qua") then
+                local txt = ""
+                for _, n in ipairs(dbgResults) do txt = txt .. n .. "\n" end
+                copy_clipboard(txt)
+            end
+            ImGui.Text("Tim duoc " .. tostring(#dbgResults) .. " class:")
+            local showN = math.min(#dbgResults, 30)
+            for i = 1, showN do
+                ImGui.Text("  " .. dbgResults[i])
+            end
+            if #dbgResults > showN then
+                ImGui.Text("  ... (" .. tostring(#dbgResults - showN) .. " them - bam Copy)")
+            end
+            if #dbgAsmList > 0 then
+                ImGui.Separator()
+                ImGui.Text("Danh sach DLL (" .. tostring(#dbgAsmList) .. "):")
+                local showA = math.min(#dbgAsmList, 12)
+                for i = 1, showA do
+                    ImGui.Text("  " .. dbgAsmList[i])
+                end
+                if #dbgAsmList > showA then
+                    ImGui.Text("  ... (" .. tostring(#dbgAsmList - showA) .. " them)")
+                end
+            end
+        end
         end -- end keyVerified
     end
     ImGui.End()

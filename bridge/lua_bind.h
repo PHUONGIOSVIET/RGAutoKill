@@ -86,6 +86,40 @@ static int lua_class_fromName(lua_State* L) {
     return 1;
 }
 
+// ─── Class.list(pattern) — tra class theo substring (khong phan biet hoa thuong)
+static int lua_class_list(lua_State* L) {
+    const char* pat = luaL_optstring(L, 1, "");
+    int maxN = (int)luaL_optinteger(L, 2, 200);
+    if (!IL2CPP::get().ready()) { lua_newtable(L); return 1; }
+    auto names = IL2CPP::get().findClassesByPattern(pat, maxN);
+    lua_createtable(L, (int)names.size(), 0);
+    for (int i = 0; i < (int)names.size(); i++) {
+        lua_pushstring(L, names[i].c_str());
+        lua_rawseti(L, -2, i + 1);
+    }
+    return 1;
+}
+
+// ─── Class.assemblies() — tra list ten DLL/image dang load
+static int lua_class_assemblies(lua_State* L) {
+    if (!IL2CPP::get().ready()) { lua_newtable(L); return 1; }
+    auto names = IL2CPP::get().listAssemblies();
+    lua_createtable(L, (int)names.size(), 0);
+    for (int i = 0; i < (int)names.size(); i++) {
+        lua_pushstring(L, names[i].c_str());
+        lua_rawseti(L, -2, i + 1);
+    }
+    return 1;
+}
+
+// ─── Class.refresh() — ep re-scan assembly de bat HybridCLR DLL moi
+static int lua_class_refresh(lua_State* L) {
+    if (!IL2CPP::get().ready()) { lua_pushinteger(L, 0); return 1; }
+    size_t n = IL2CPP::get().refreshAssemblies();
+    lua_pushinteger(L, (lua_Integer)n);
+    return 1;
+}
+
 // ─── classProxy:findObjects() ─────────────────────────────────────────────────
 static int cls_findObjects(lua_State* L) {
     ClsProxy* cp = checkCls(L);
@@ -341,6 +375,12 @@ static void registerBindings(lua_State* L) {
     lua_newtable(L);
     lua_pushcfunction(L, lua_class_fromName);
     lua_setfield(L, -2, "fromName");
+    lua_pushcfunction(L, lua_class_list);
+    lua_setfield(L, -2, "list");
+    lua_pushcfunction(L, lua_class_assemblies);
+    lua_setfield(L, -2, "assemblies");
+    lua_pushcfunction(L, lua_class_refresh);
+    lua_setfield(L, -2, "refresh");
     lua_setglobal(L, "Class");
 
     // ImGui global

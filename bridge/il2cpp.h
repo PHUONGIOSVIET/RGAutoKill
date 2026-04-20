@@ -155,6 +155,12 @@ public:
         return exc; // returns exception if any
     }
 
+    // Public helper — dùng cho lua_bind.h
+    Il2CppClass* getObjectClass(Il2CppObject* obj) {
+        if (!obj || !il2cpp_object_get_class_) return nullptr;
+        return il2cpp_object_get_class_(obj);
+    }
+
     // Field helpers
     template<typename T>
     T getField(Il2CppObject* obj, const char* fieldName) {

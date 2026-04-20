@@ -175,7 +175,16 @@ static void tryInit(int attempt) {
         dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)),
         dispatch_get_main_queue(),
     ^{
-        UIView* view = [UIApplication sharedApplication].keyWindow.rootViewController.view;
+        UIWindow* window = nil;
+        for (UIWindowScene* scene in [UIApplication sharedApplication].connectedScenes) {
+            if ([scene isKindOfClass:[UIWindowScene class]] &&
+                scene.activationState == UISceneActivationStateForegroundActive) {
+                window = scene.windows.firstObject;
+                break;
+            }
+        }
+        if (!window) window = [UIApplication sharedApplication].windows.firstObject;
+        UIView* view = window.rootViewController.view;
         if (view) initImGui(view);
     });
 }

@@ -33,7 +33,7 @@ static ObjProxy* checkObj(lua_State* L, int idx = 1) {
 static void pushObject(lua_State* L, Il2CppObject* obj, Il2CppClass* klass = nullptr) {
     ObjProxy* p = (ObjProxy*)lua_newuserdata(L, sizeof(ObjProxy));
     p->obj   = obj;
-    p->klass = klass ? klass : (obj ? IL2CPP::get().il2cpp_object_get_class_stub(obj) : nullptr);
+    p->klass = klass ? klass : (obj ? IL2CPP::get().getObjectClass(obj) : nullptr);
     luaL_setmetatable(L, OBJ_META);
 }
 

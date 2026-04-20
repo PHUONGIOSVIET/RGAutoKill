@@ -5,9 +5,22 @@ static const char* const RG_SCRIPT = R"LUASCRIPT(
 -- RG AutoKill + OneHit + EXP x1000 + Tested Speed | PHUONGIOS KEY SYSTEM
 
 -- ==========================================
--- KEY SYSTEM
+-- KEY SYSTEM — PHUONGIOS.COM
 -- ==========================================
-local KEY_URL = "https://raw.githubusercontent.com/phuongiosviet/keys/main/keys.txt"
+-- Thử lần lượt cac endpoint cua phuongios.com
+local KEY_URLS = {
+    "https://phuongios.com/keys/soulknight.txt",
+    "https://phuongios.com/keys/soulknight-prequel.txt",
+    "https://phuongios.com/key/soulknight.txt",
+    "https://phuongios.com/api/keys/soulknight.txt",
+    "https://www.phuongios.com/keys/soulknight.txt",
+}
+-- Endpoint API verify (neu phuongios.com dung dang GET ?key=XXX)
+local VERIFY_API_URLS = {
+    "https://phuongios.com/api/verify?game=soulknight&key=",
+    "https://phuongios.com/verify?key=",
+}
+
 local keyInput    = ""
 local keyVerified = false
 local keyStatus   = "Chua co key"
@@ -17,27 +30,65 @@ local function trim(s)
     return s:match("^%s*(.-)%s*$")
 end
 
+-- Thu tai danh sach key tu nhieu URL, tra ve response dau tien co noi dung
+local function fetchKeyList()
+    for _, url in ipairs(KEY_URLS) do
+        local r = http_get(url)
+        if r and #r > 0 and not r:find("<!DOCTYPE", 1, true) and not r:find("<html", 1, true) then
+            return r, url
+        end
+    end
+    return nil, nil
+end
+
+-- Thu goi API verify dang GET (neu tra ve "OK"/"VALID"/"1" => hop le)
+local function tryVerifyAPI(k)
+    for _, base in ipairs(VERIFY_API_URLS) do
+        local r = http_get(base .. k)
+        if r then
+            local low = r:lower()
+            if low:find("ok") or low:find("valid") or low:find("true") or trim(r) == "1" then
+                return true
+            end
+        end
+    end
+    return false
+end
+
 local function verifyKey(k)
     k = trim(k)
     if k == "" then
         keyStatus = "Vui long nhap key"
         return false
     end
-    keyStatus = "Dang kiem tra..."
+    keyStatus = "Dang kiem tra voi phuongios.com..."
     keyChecking = true
-    local response = http_get(KEY_URL)
-    keyChecking = false
-    if not response then
-        keyStatus = "Loi mang, thu lai"
-        return false
-    end
-    for line in response:gmatch("[^\r\n]+") do
-        if trim(line) == k then
-            keyStatus = "KEY HOP LE - PHUONGIOS"
-            return true
+
+    -- 1) Thu tai danh sach key tu phuongios.com
+    local list, usedUrl = fetchKeyList()
+    if list then
+        for line in list:gmatch("[^\r\n]+") do
+            if trim(line) == k then
+                keyStatus = "KEY HOP LE - PHUONGIOS"
+                keyChecking = false
+                return true
+            end
         end
     end
-    keyStatus = "Key sai hoac het han"
+
+    -- 2) Thu API verify
+    if tryVerifyAPI(k) then
+        keyStatus = "KEY HOP LE - PHUONGIOS"
+        keyChecking = false
+        return true
+    end
+
+    keyChecking = false
+    if not list then
+        keyStatus = "Khong ket noi duoc phuongios.com"
+    else
+        keyStatus = "Key sai hoac het han"
+    end
     return false
 end
 
@@ -282,7 +333,8 @@ function OnDraw()
                 ImGui.TextColored(1, 0.3, 0.3, 1, "[!] " .. keyStatus)
             end
             ImGui.Separator()
-            ImGui.Text("Lien he PHUONGIOS de mua key")
+            ImGui.TextColored(1, 0.84, 0, 1, "Mua key tai: phuongios.com")
+            ImGui.Text("Soul Knight Prequel - Key hack game")
         else
             ImGui.TextColored(0, 1, 0, 1, "[OK] Da xac thuc key")
             ImGui.Separator()

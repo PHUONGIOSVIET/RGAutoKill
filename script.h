@@ -95,9 +95,18 @@ end
 -- ==========================================
 -- MAIN VARS
 -- ==========================================
-local RGCharacter     = Class.fromName("RGCharacter")
-local CurrencyExp     = Class.fromName("CurrencyExp")
-local CurrencyPeakExp = Class.fromName("CurrencyPeakExp")
+-- Binding class lazily — HybridCLR load DLL tre nen retry moi lan
+local RGCharacter     = nil
+local CurrencyExp     = nil
+local CurrencyPeakExp = nil
+local GameSpeedM      = nil
+
+local function ensureClasses()
+    if not RGCharacter     then RGCharacter     = Class.fromName("RGCharacter")     end
+    if not CurrencyExp     then CurrencyExp     = Class.fromName("CurrencyExp")     end
+    if not CurrencyPeakExp then CurrencyPeakExp = Class.fromName("CurrencyPeakExp") end
+    if not GameSpeedM      then GameSpeedM      = Class.fromName("Module.GameSpeedM") or Class.fromName("GameSpeedM") end
+end
 
 -- Debug search state
 local dbgPattern  = ""
@@ -105,6 +114,7 @@ local dbgResults  = {}
 local dbgAsmList  = {}
 local dbgAsmCount = 0
 local dbgShow     = false
+local dbgClassStatus = "?"
 
 local autoKill = false
 local oneHit = false
@@ -163,6 +173,7 @@ end
 
 local function rescanMonsters()
     monsters = {}
+    ensureClasses()
     if not RGCharacter then return 0 end
     local ok, arr = pcall(function() return RGCharacter:findObjects() end)
     if not ok or not arr then return 0 end
@@ -234,6 +245,7 @@ local function bindExpObjects(force)
     local t = now()
     if (not force) and ((t - lastBind) < bindInterval) then return end
     lastBind = t
+    ensureClasses()
     if expObj == nil then expObj = findFirstObj(CurrencyExp) end
     if peakObj == nil then peakObj = findFirstObj(CurrencyPeakExp) end
     if expObj then
@@ -275,8 +287,9 @@ end
 
 local function applySpeed(scale)
     local ok, sOk, sMsg = pcall(function()
-        local cls = Class.fromName("Module.GameSpeedM")
-        if not cls then return false, "Khong tim thay Module.GameSpeedM" end
+        ensureClasses()
+        local cls = GameSpeedM
+        if not cls then return false, "Khong tim thay GameSpeedM - dung Debug de tim ten class" end
         local objs = cls:findObjects()
         if not objs or #objs == 0 then return false, "Khong tim thay GameSpeedM object" end
         local v = math.floor(scale + 0.5)
@@ -394,9 +407,16 @@ function OnDraw()
         if dbgToggle then dbgShow = dbgV end
         if dbgShow then
             ImGui.TextColored(1, 0.84, 0, 1, "Game dung HybridCLR — class thuc te load sau")
+            ensureClasses()
+            ImGui.Text("RGCharacter:     " .. (RGCharacter     and "FOUND" or "nil"))
+            ImGui.Text("CurrencyExp:     " .. (CurrencyExp     and "FOUND" or "nil"))
+            ImGui.Text("CurrencyPeakExp: " .. (CurrencyPeakExp and "FOUND" or "nil"))
+            ImGui.Text("GameSpeedM:      " .. (GameSpeedM      and "FOUND" or "nil"))
             if ImGui.Button("Refresh assemblies") then
                 dbgAsmCount = Class.refresh()
                 dbgAsmList  = Class.assemblies()
+                -- Reset cache de re-bind
+                RGCharacter, CurrencyExp, CurrencyPeakExp, GameSpeedM = nil, nil, nil, nil
             end
             ImGui.SameLine()
             ImGui.Text("So assembly: " .. tostring(dbgAsmCount))
@@ -436,7 +456,7 @@ function OnDraw()
     ImGui.End()
 end
 
-bindExpObjects(true)
-rescanMonsters()
-print("[RG] Script loaded OK")
+-- Khong bind ngay — class cua game chua load xong (HybridCLR)
+-- Se tu dong bind lazily trong killTick/expTick/applySpeed
+print("[RG] Script loaded OK — cho HybridCLR load SoulKnight-Prequel.dll")
 )LUASCRIPT";

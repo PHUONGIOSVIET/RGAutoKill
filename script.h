@@ -250,21 +250,41 @@ function OnDraw()
         -- KEY SECTION
         if not keyVerified then
             ImGui.Text("Nhap key de su dung:")
-            local changed, newVal = ImGui.InputText("##key", keyInput, 64)
+            local changed, newVal = ImGui.InputText("##key", keyInput, 128)
             if changed then keyInput = newVal end
+            if ImGui.Button("Dan tu clipboard") then
+                local s = paste_clipboard()
+                if s and s ~= "" then
+                    keyInput = s
+                    keyStatus = "Da dan key - bam Xac nhan"
+                else
+                    keyStatus = "Clipboard trong"
+                end
+            end
             ImGui.SameLine()
             if ImGui.Button("Xac nhan") then
                 keyVerified = verifyKey(keyInput)
             end
+            ImGui.SameLine()
+            if ImGui.Button("Xoa") then
+                keyInput = ""
+                keyStatus = "Chua co key"
+            end
+            -- Preview key hien tai (an bot de gon)
+            if keyInput ~= "" then
+                local preview = keyInput
+                if #preview > 24 then preview = preview:sub(1, 20) .. "..." end
+                ImGui.TextColored(0.7, 0.85, 1, 1, "Key: " .. preview)
+            end
             if keyStatus == "KEY HOP LE - PHUONGIOS" then
-                ImGui.TextColored(0, 1, 0, 1, "[✓] " .. keyStatus)
+                ImGui.TextColored(0, 1, 0, 1, "[OK] " .. keyStatus)
             else
                 ImGui.TextColored(1, 0.3, 0.3, 1, "[!] " .. keyStatus)
             end
             ImGui.Separator()
             ImGui.Text("Lien he PHUONGIOS de mua key")
         else
-            ImGui.TextColored(0, 1, 0, 1, "[✓] Da xac thuc key")
+            ImGui.TextColored(0, 1, 0, 1, "[OK] Da xac thuc key")
             ImGui.Separator()
         end
 

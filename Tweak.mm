@@ -5,6 +5,7 @@
 #import <UIKit/UIKit.h>
 #import <Metal/Metal.h>
 #import <MetalKit/MetalKit.h>
+#import <CoreText/CoreText.h>
 #import <objc/runtime.h>
 #include <dlfcn.h>
 #include <mach-o/dyld.h>
@@ -159,16 +160,79 @@ static void setupOverlay() {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
-    io.FontGlobalScale                    = 1.5f;
+    io.FontGlobalScale                    = 1.0f;
     io.ConfigFlags                       |= ImGuiConfigFlags_NoMouseCursorChange;
     io.DisplaySize                        = ImVec2(frame.size.width, frame.size.height);
     io.DisplayFramebufferScale            = ImVec2(win.screen.scale, win.screen.scale);
 
+    // ── Load system font (SF Pro) với glyph tiếng Việt cho đẹp ───────────────
+    {
+        UIFont* sysFont = [UIFont systemFontOfSize:18 weight:UIFontWeightMedium];
+        if (sysFont) {
+            CTFontRef ctFont = CTFontCreateWithName((__bridge CFStringRef)sysFont.fontName, 18, NULL);
+            if (ctFont) {
+                CFURLRef fontURL = (CFURLRef)CTFontCopyAttribute(ctFont, kCTFontURLAttribute);
+                if (fontURL) {
+                    NSData* fontData = [NSData dataWithContentsOfURL:(__bridge NSURL*)fontURL];
+                    CFRelease(fontURL);
+                    if (fontData && fontData.length > 0) {
+                        void* buf = IM_ALLOC(fontData.length);
+                        memcpy(buf, fontData.bytes, fontData.length);
+                        ImFontConfig cfg;
+                        cfg.FontDataOwnedByAtlas = true;
+                        cfg.OversampleH          = 2;
+                        cfg.OversampleV          = 2;
+                        cfg.PixelSnapH           = true;
+                        cfg.RasterizerMultiply   = 1.05f;
+                        io.Fonts->AddFontFromMemoryTTF(buf, (int)fontData.length, 22.0f, &cfg,
+                                                       io.Fonts->GetGlyphRangesVietnamese());
+                        LOG("Loaded system font: %{public}s", [sysFont.fontName UTF8String]);
+                    }
+                }
+                CFRelease(ctFont);
+            }
+        }
+        if (io.Fonts->Fonts.Size == 0) {
+            // Fallback: default font to bé xíu, bù bằng FontGlobalScale
+            io.Fonts->AddFontDefault();
+            io.FontGlobalScale = 1.6f;
+            LOG("Using default ImGui font (fallback)");
+        }
+    }
+
     ImGui::StyleColorsDark();
-    ImGui::GetStyle().ScaleAllSizes(1.3f);
-    ImGui::GetStyle().WindowRounding   = 8.0f;
-    ImGui::GetStyle().FrameRounding    = 4.0f;
-    ImGui::GetStyle().Alpha            = 0.95f;
+    ImGui::GetStyle().ScaleAllSizes(1.2f);
+
+    ImGuiStyle& st                = ImGui::GetStyle();
+    st.WindowRounding             = 10.0f;
+    st.ChildRounding              = 8.0f;
+    st.FrameRounding              = 6.0f;
+    st.GrabRounding               = 6.0f;
+    st.PopupRounding              = 6.0f;
+    st.ScrollbarRounding          = 8.0f;
+    st.TabRounding                = 6.0f;
+    st.WindowPadding              = ImVec2(12, 10);
+    st.FramePadding               = ImVec2(10, 6);
+    st.ItemSpacing                = ImVec2(10, 8);
+    st.ItemInnerSpacing           = ImVec2(6, 4);
+    st.WindowBorderSize           = 0.0f;
+    st.FrameBorderSize            = 0.0f;
+    st.Alpha                      = 0.97f;
+
+    ImVec4* c = st.Colors;
+    c[ImGuiCol_WindowBg]          = ImVec4(0.08f, 0.09f, 0.12f, 0.96f);
+    c[ImGuiCol_TitleBg]           = ImVec4(0.10f, 0.12f, 0.18f, 1.00f);
+    c[ImGuiCol_TitleBgActive]     = ImVec4(0.18f, 0.22f, 0.34f, 1.00f);
+    c[ImGuiCol_FrameBg]           = ImVec4(0.14f, 0.17f, 0.24f, 0.90f);
+    c[ImGuiCol_FrameBgHovered]    = ImVec4(0.22f, 0.28f, 0.40f, 1.00f);
+    c[ImGuiCol_FrameBgActive]     = ImVec4(0.30f, 0.38f, 0.55f, 1.00f);
+    c[ImGuiCol_Button]            = ImVec4(0.20f, 0.42f, 0.80f, 1.00f);
+    c[ImGuiCol_ButtonHovered]     = ImVec4(0.28f, 0.54f, 0.95f, 1.00f);
+    c[ImGuiCol_ButtonActive]      = ImVec4(0.16f, 0.35f, 0.70f, 1.00f);
+    c[ImGuiCol_CheckMark]         = ImVec4(0.20f, 0.90f, 0.50f, 1.00f);
+    c[ImGuiCol_SliderGrab]        = ImVec4(0.20f, 0.60f, 1.00f, 1.00f);
+    c[ImGuiCol_SliderGrabActive]  = ImVec4(0.35f, 0.75f, 1.00f, 1.00f);
+    c[ImGuiCol_Separator]         = ImVec4(1.00f, 0.84f, 0.00f, 0.35f);
 
     ImGui_ImplMetal_Init(gDevice);
     ImGui_ImplUIKit_Init(ov);

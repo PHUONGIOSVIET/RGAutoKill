@@ -11,6 +11,7 @@ extern "C" {
 
 #import <imgui.h>
 #import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
 
 static const char* OBJ_META = "RGObject";
 static const char* CLS_META = "RGClass";
@@ -38,6 +39,22 @@ static void pushClass(lua_State* L, Il2CppClass* klass, const std::string& name)
     p->klass = klass;
     p->name  = name;
     luaL_setmetatable(L, CLS_META);
+}
+
+// ─── paste_clipboard ─────────────────────────────────────────────────────────
+static int lua_paste_clipboard(lua_State* L) {
+    NSString* s = [UIPasteboard generalPasteboard].string;
+    if (s && s.length > 0) lua_pushstring(L, [s UTF8String]);
+    else                   lua_pushstring(L, "");
+    return 1;
+}
+
+// ─── copy_clipboard ──────────────────────────────────────────────────────────
+static int lua_copy_clipboard(lua_State* L) {
+    const char* s = luaL_optstring(L, 1, "");
+    NSString* ns = [NSString stringWithUTF8String:s ? s : ""];
+    [UIPasteboard generalPasteboard].string = ns ? ns : @"";
+    return 0;
 }
 
 // ─── http_get ─────────────────────────────────────────────────────────────────
@@ -313,6 +330,12 @@ static void registerBindings(lua_State* L) {
     // http_get global
     lua_pushcfunction(L, lua_http_get);
     lua_setglobal(L, "http_get");
+
+    // clipboard helpers
+    lua_pushcfunction(L, lua_paste_clipboard);
+    lua_setglobal(L, "paste_clipboard");
+    lua_pushcfunction(L, lua_copy_clipboard);
+    lua_setglobal(L, "copy_clipboard");
 
     // Class global
     lua_newtable(L);

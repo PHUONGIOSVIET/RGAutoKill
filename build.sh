@@ -54,6 +54,7 @@ echo "── Compiling Tweak.mm ──"
 $CXX $CXX_FLAGS \
   -framework Metal -framework MetalKit \
   -framework UIKit -framework Foundation \
+  -framework CoreText -framework CoreGraphics \
   -c Tweak.mm -o .build/Tweak.o
 OBJS+=(".build/Tweak.o")
 
@@ -72,6 +73,8 @@ $CXX \
   -framework UIKit \
   -framework Foundation \
   -framework QuartzCore \
+  -framework CoreText \
+  -framework CoreGraphics \
   "$LUA_LIB" \
   "${OBJS[@]}" \
   -o "$OUT"

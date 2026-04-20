@@ -1,6 +1,6 @@
 #pragma once
 // Lua bindings: Class, ImGui, game object proxy
-// Provides: Class.fromName(), obj:Method(), obj.field, ImGui.*
+// Provides: Class.fromName(), obj:Method(), obj.field, ImGui.*, http_get()
 
 #include <string>
 #include <vector>
@@ -14,6 +14,29 @@ extern "C" {
 }
 
 #import <imgui.h>
+#import <Foundation/Foundation.h>
+
+// ─── http_get(url) → string | nil ────────────────────────────────────────────
+static int lua_http_get(lua_State* L) {
+    const char* url = luaL_checkstring(L, 1);
+    __block NSString* result = nil;
+    dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+    NSURL* nsUrl = [NSURL URLWithString:[NSString stringWithUTF8String:url]];
+    NSMutableURLRequest* req = [NSMutableURLRequest requestWithURL:nsUrl
+        cachePolicy:NSURLRequestReloadIgnoringLocalCacheData
+        timeoutInterval:6.0];
+    [[[NSURLSession sharedSession] dataTaskWithRequest:req
+        completionHandler:^(NSData* data, NSURLResponse* r, NSError* e) {
+            if (data && !e)
+                result = [[NSString alloc] initWithData:data
+                          encoding:NSUTF8StringEncoding];
+            dispatch_semaphore_signal(sem);
+        }] resume];
+    dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 7*NSEC_PER_SEC));
+    if (result) lua_pushstring(L, [result UTF8String]);
+    else        lua_pushnil(L);
+    return 1;
+}
 
 // ─── Object Proxy ────────────────────────────────────────────────────────────
 // Lua userdata wrapping an Il2CppObject*
@@ -249,6 +272,29 @@ static int imgui_Text(lua_State* L) {
 static int imgui_SameLine(lua_State* L) {
     ImGui::SameLine(); return 0;
 }
+static int imgui_Separator(lua_State* L) {
+    ImGui::Separator(); return 0;
+}
+static int imgui_InputText(lua_State* L) {
+    const char* label   = luaL_checkstring(L, 1);
+    const char* current = luaL_optstring(L, 2, "");
+    int maxLen = (int)luaL_optinteger(L, 3, 128);
+    std::vector<char> buf(maxLen + 1, 0);
+    strncpy(buf.data(), current, maxLen);
+    bool changed = ImGui::InputText(label, buf.data(), maxLen + 1);
+    lua_pushboolean(L, changed ? 1 : 0);
+    lua_pushstring(L, buf.data());
+    return 2;
+}
+static int imgui_TextColored(lua_State* L) {
+    float r = (float)luaL_checknumber(L, 1);
+    float g = (float)luaL_checknumber(L, 2);
+    float b = (float)luaL_checknumber(L, 3);
+    float a = (float)luaL_optnumber(L, 4, 1.0);
+    const char* txt = luaL_checkstring(L, 5);
+    ImGui::TextColored(ImVec4(r,g,b,a), "%s", txt);
+    return 0;
+}
 
 static const luaL_Reg imgui_lib[] = {
     { "Begin",       imgui_Begin      },
@@ -257,7 +303,10 @@ static const luaL_Reg imgui_lib[] = {
     { "SliderFloat", imgui_SliderFloat},
     { "Button",      imgui_Button     },
     { "Text",        imgui_Text       },
-    { "SameLine",    imgui_SameLine   },
+    { "SameLine",     imgui_SameLine    },
+    { "Separator",    imgui_Separator   },
+    { "InputText",    imgui_InputText   },
+    { "TextColored",  imgui_TextColored },
     { nullptr, nullptr }
 };
 
@@ -283,6 +332,10 @@ static void registerBindings(lua_State* L) {
     lua_settable(L, -3);
     lua_settable(L, -3);
     lua_pop(L, 1);
+
+    // http_get global
+    lua_pushcfunction(L, lua_http_get);
+    lua_setglobal(L, "http_get");
 
     // Class table
     lua_newtable(L);

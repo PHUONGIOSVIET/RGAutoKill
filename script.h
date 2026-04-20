@@ -2,7 +2,48 @@
 // Auto-embedded RG Lua script — do not edit manually
 
 static const char* const RG_SCRIPT = R"LUASCRIPT(
--- RG AutoKill + OneHit + EXP x1000 + Tested Speed
+-- RG AutoKill + OneHit + EXP x1000 + Tested Speed | PHUONGIOS KEY SYSTEM
+
+-- ==========================================
+-- KEY SYSTEM
+-- ==========================================
+local KEY_URL = "https://raw.githubusercontent.com/phuongiosviet/keys/main/keys.txt"
+local keyInput    = ""
+local keyVerified = false
+local keyStatus   = "Chua co key"
+local keyChecking = false
+
+local function trim(s)
+    return s:match("^%s*(.-)%s*$")
+end
+
+local function verifyKey(k)
+    k = trim(k)
+    if k == "" then
+        keyStatus = "Vui long nhap key"
+        return false
+    end
+    keyStatus = "Dang kiem tra..."
+    keyChecking = true
+    local response = http_get(KEY_URL)
+    keyChecking = false
+    if not response then
+        keyStatus = "Loi mang, thu lai"
+        return false
+    end
+    for line in response:gmatch("[^\r\n]+") do
+        if trim(line) == k then
+            keyStatus = "KEY HOP LE - PHUONGIOS"
+            return true
+        end
+    end
+    keyStatus = "Key sai hoac het han"
+    return false
+end
+
+-- ==========================================
+-- MAIN VARS
+-- ==========================================
 local RGCharacter = Class.fromName("RGCharacter")
 local CurrencyExp = Class.fromName("CurrencyExp")
 local CurrencyPeakExp = Class.fromName("CurrencyPeakExp")
@@ -197,8 +238,32 @@ function OnDraw()
     killTick()
     expTick()
     if ImGui.Begin("RG AutoKill + OneHit + EXP + Speed") then
-        ImGui.Text("== PHUONGIOS ==")
-        ImGui.Text("------------------------")
+        ImGui.TextColored(1, 0.84, 0, 1, "== PHUONGIOS ==")
+        ImGui.Separator()
+
+        -- KEY SECTION
+        if not keyVerified then
+            ImGui.Text("Nhap key de su dung:")
+            local changed, newVal = ImGui.InputText("##key", keyInput, 64)
+            if changed then keyInput = newVal end
+            ImGui.SameLine()
+            if ImGui.Button("Xac nhan") then
+                keyVerified = verifyKey(keyInput)
+            end
+            if keyStatus == "KEY HOP LE - PHUONGIOS" then
+                ImGui.TextColored(0, 1, 0, 1, "[✓] " .. keyStatus)
+            else
+                ImGui.TextColored(1, 0.3, 0.3, 1, "[!] " .. keyStatus)
+            end
+            ImGui.Separator()
+            ImGui.Text("Lien he PHUONGIOS de mua key")
+        else
+            ImGui.TextColored(0, 1, 0, 1, "[✓] Da xac thuc key")
+            ImGui.Separator()
+        end
+
+        -- CHỈ HIỆN TÍNH NĂNG NẾU CÓ KEY
+        if keyVerified then
         local c1, v1 = ImGui.Checkbox("Auto Kill", autoKill)
         if c1 then autoKill = v1 end
         local c2, v2 = ImGui.Checkbox("One Hit (Set HP=1)", oneHit)
@@ -237,6 +302,7 @@ function OnDraw()
         ImGui.Text("Target camp: 8 + 2")
         ImGui.Text("EXP: x" .. tostring(math.floor(expMult)))
         ImGui.Text("Trang thai speed: " .. speedStatusText)
+        end -- end keyVerified
     end
     ImGui.End()
 end

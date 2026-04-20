@@ -1,9 +1,10 @@
-// RGAutoKill.dylib
-// No substrate dependency — pure ObjC swizzling + Metal hook
+// RGAutoKill.dylib — SAFE VERSION
+// Dùng transparent MTKView overlay, KHÔNG hook render loop game → không crash
 
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 #import <Metal/Metal.h>
+#import <MetalKit/MetalKit.h>
 #import <objc/runtime.h>
 #include <dlfcn.h>
 #include <mach-o/dyld.h>
@@ -24,177 +25,198 @@ extern "C" {
 
 #define LOG(fmt, ...) os_log(OS_LOG_DEFAULT, "[RG] " fmt, ##__VA_ARGS__)
 
-// ─── Globals ─────────────────────────────────────────────────────────────────
-static lua_State*        gLua        = nullptr;
-static bool              gImGuiReady = false;
-static id<MTLDevice>     gDevice     = nil;
-static id<MTLCommandQueue> gQueue    = nil;
-static IMP               gOrigDrawRect = nullptr;
+static lua_State*          gLua        = nullptr;
+static id<MTLDevice>       gDevice     = nil;
+static id<MTLCommandQueue> gQueue      = nil;
+static bool                gImGuiReady = false;
 
-// ─── Lua OnDraw ──────────────────────────────────────────────────────────────
+// ─── Gọi OnDraw Lua ──────────────────────────────────────────────────────────
 static void callOnDraw() {
     if (!gLua) return;
     lua_getglobal(gLua, "OnDraw");
     if (!lua_isfunction(gLua, -1)) { lua_pop(gLua, 1); return; }
     if (lua_pcall(gLua, 0, 0, 0) != LUA_OK) {
-        const char* err = lua_tostring(gLua, -1);
-        LOG("OnDraw err: %{public}s", err ? err : "?");
+        const char* e = lua_tostring(gLua, -1);
+        LOG("OnDraw: %{public}s", e ? e : "?");
         lua_pop(gLua, 1);
     }
 }
 
-// ─── Hook: MTKView drawRect ───────────────────────────────────────────────────
-static void hook_drawRect(id self, SEL sel, CGRect rect) {
-    // Gọi drawRect gốc của game
-    ((void(*)(id, SEL, CGRect))gOrigDrawRect)(self, sel, rect);
+// ─── Overlay MTKView (trong suốt, đè lên game) ───────────────────────────────
+@interface RGOverlay : MTKView <MTKViewDelegate>
+@end
 
-    if (!gImGuiReady || !gLua || !gDevice) return;
+@implementation RGOverlay
 
-    // Lấy layer và drawable
-    CAMetalLayer* layer = (CAMetalLayer*)[self layer];
-    if (![layer isKindOfClass:[CAMetalLayer class]]) return;
+- (instancetype)initWithFrame:(CGRect)f device:(id<MTLDevice>)dev {
+    self = [super initWithFrame:f device:dev];
+    if (self) {
+        self.delegate                           = self;
+        self.opaque                             = NO;
+        self.backgroundColor                    = UIColor.clearColor;
+        self.preferredFramesPerSecond           = 60;
+        self.clearColor                         = MTLClearColorMake(0,0,0,0);
+        self.colorPixelFormat                   = MTLPixelFormatBGRA8Unorm;
+        self.depthStencilPixelFormat            = MTLPixelFormatInvalid;
+        self.userInteractionEnabled             = YES;
+        ((CAMetalLayer*)self.layer).opaque      = NO;
+        ((CAMetalLayer*)self.layer).pixelFormat = MTLPixelFormatBGRA8Unorm;
+    }
+    return self;
+}
 
-    id<CAMetalDrawable> drawable = [layer nextDrawable];
-    if (!drawable) return;
-
-    MTLRenderPassDescriptor* rpd = [MTLRenderPassDescriptor renderPassDescriptor];
-    rpd.colorAttachments[0].texture     = drawable.texture;
-    rpd.colorAttachments[0].loadAction  = MTLLoadActionLoad;   // giữ frame game
-    rpd.colorAttachments[0].storeAction = MTLStoreActionStore;
-
+// Render frame
+- (void)drawInMTKView:(MTKView*)view {
+    if (!gImGuiReady || !gLua) return;
+    MTLRenderPassDescriptor* rpd = view.currentRenderPassDescriptor;
+    if (!rpd) return;
     id<MTLCommandBuffer> cmd = [gQueue commandBuffer];
+    if (!cmd) return;
     id<MTLRenderCommandEncoder> enc = [cmd renderCommandEncoderWithDescriptor:rpd];
+    if (!enc) return;
 
-    // ImGui frame
     ImGui_ImplMetal_NewFrame(rpd);
-    ImGui_ImplUIKit_NewFrame((__bridge UIView*)(__bridge void*)self);
+    ImGui_ImplUIKit_NewFrame(view);
     ImGui::NewFrame();
-
-    callOnDraw();   // ← chạy script Lua
-
+    callOnDraw();
     ImGui::Render();
     ImGui_ImplMetal_RenderDrawData(ImGui::GetDrawData(), cmd, enc);
 
     [enc endEncoding];
-    [cmd presentDrawable:drawable];
+    [cmd presentDrawable:view.currentDrawable];
     [cmd commit];
 }
 
-// ─── Swizzle MTKView ─────────────────────────────────────────────────────────
-static bool hookMTKView() {
-    Class cls = NSClassFromString(@"MTKView");
-    if (!cls) { LOG("MTKView not found"); return false; }
-
-    Method m = class_getInstanceMethod(cls, @selector(drawRect:));
-    if (!m) { LOG("drawRect: not found"); return false; }
-
-    gOrigDrawRect = method_setImplementation(m, (IMP)hook_drawRect);
-    LOG("MTKView hooked OK");
-    return true;
+- (void)mtkView:(MTKView*)view drawableSizeWillChange:(CGSize)size {
+    ImGuiIO& io = ImGui::GetIO();
+    io.DisplaySize = ImVec2((float)size.width / self.contentScaleFactor,
+                            (float)size.height / self.contentScaleFactor);
 }
 
-// ─── Init ImGui ───────────────────────────────────────────────────────────────
-static void initImGui(UIView* view) {
-    if (gImGuiReady) return;
+// Chỉ bắt touch khi ImGui muốn, còn lại pass through game
+- (UIView*)hitTest:(CGPoint)pt withEvent:(UIEvent*)e {
+    UIView* hit = [super hitTest:pt withEvent:e];
+    if (hit == self && !ImGui::GetIO().WantCaptureMouse) return nil;
+    return hit;
+}
+- (void)touchesBegan:(NSSet<UITouch*>*)t withEvent:(UIEvent*)e {
+    ImGui_ImplUIKit_HandleTouch(t, self, true);
+}
+- (void)touchesMoved:(NSSet<UITouch*>*)t withEvent:(UIEvent*)e {
+    ImGui_ImplUIKit_HandleTouch(t, self, true);
+}
+- (void)touchesEnded:(NSSet<UITouch*>*)t withEvent:(UIEvent*)e {
+    ImGui_ImplUIKit_HandleTouch(t, self, false);
+}
+- (void)touchesCancelled:(NSSet<UITouch*>*)t withEvent:(UIEvent*)e {
+    ImGui_ImplUIKit_HandleTouch(t, self, false);
+}
+@end
+
+// ─── Lấy window đang active ───────────────────────────────────────────────────
+static UIWindow* getWindow() {
+    for (UIWindowScene* sc in [UIApplication sharedApplication].connectedScenes) {
+        if ([sc isKindOfClass:[UIWindowScene class]] &&
+            sc.activationState == UISceneActivationStateForegroundActive) {
+            for (UIWindow* w in ((UIWindowScene*)sc).windows)
+                if (!w.isHidden) return w;
+        }
+    }
+    return [UIApplication sharedApplication].windows.firstObject;
+}
+
+// ─── Setup overlay + ImGui ────────────────────────────────────────────────────
+static void setupOverlay() {
+    UIWindow* win = getWindow();
+    if (!win) { LOG("No window"); return; }
 
     gDevice = MTLCreateSystemDefaultDevice();
-    if (!gDevice) { LOG("No Metal device"); return; }
-
+    if (!gDevice) { LOG("No MTLDevice"); return; }
     gQueue = [gDevice newCommandQueue];
 
+    CGRect frame = win.bounds;
+    RGOverlay* ov = [[RGOverlay alloc] initWithFrame:frame device:gDevice];
+    ov.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+
+    // Thêm lên trên cùng
+    [win addSubview:ov];
+    [win bringSubviewToFront:ov];
+
+    // Init ImGui
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
-
     ImGuiIO& io = ImGui::GetIO();
-    io.FontGlobalScale = 2.5f;             // chữ to trên màn hình nhỏ
-    io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
+    io.FontGlobalScale                    = 2.4f;
+    io.ConfigFlags                       |= ImGuiConfigFlags_NoMouseCursorChange;
+    io.DisplaySize                        = ImVec2(frame.size.width, frame.size.height);
+    io.DisplayFramebufferScale            = ImVec2(win.screen.scale, win.screen.scale);
 
     ImGui::StyleColorsDark();
     ImGui::GetStyle().ScaleAllSizes(2.2f);
     ImGui::GetStyle().WindowRounding   = 8.0f;
     ImGui::GetStyle().FrameRounding    = 4.0f;
+    ImGui::GetStyle().Alpha            = 0.95f;
 
     ImGui_ImplMetal_Init(gDevice);
-    ImGui_ImplUIKit_Init(view);
+    ImGui_ImplUIKit_Init(ov);
 
     gImGuiReady = true;
-    LOG("ImGui ready");
+    LOG("Overlay ready");
 }
 
 // ─── Init Lua ─────────────────────────────────────────────────────────────────
 static void initLua() {
-    if (gLua) return;
     gLua = luaL_newstate();
     luaL_openlibs(gLua);
     registerBindings(gLua);
-
     if (luaL_dostring(gLua, RG_SCRIPT) != LUA_OK) {
-        const char* err = lua_tostring(gLua, -1);
-        LOG("Script error: %{public}s", err ? err : "?");
+        const char* e = lua_tostring(gLua, -1);
+        LOG("Script error: %{public}s", e ? e : "?");
         lua_pop(gLua, 1);
     } else {
-        LOG("Script loaded OK");
+        LOG("Script OK");
     }
 }
 
-// ─── Tìm base IL2CPP ─────────────────────────────────────────────────────────
+// ─── Tìm IL2CPP base ─────────────────────────────────────────────────────────
 static uintptr_t findIL2CppBase() {
     for (uint32_t i = 0; i < _dyld_image_count(); i++) {
-        const char* name = _dyld_get_image_name(i);
-        if (name && (strstr(name, "UnityFramework") || strstr(name, "GameAssembly"))) {
+        const char* n = _dyld_get_image_name(i);
+        if (n && (strstr(n, "UnityFramework") || strstr(n, "GameAssembly"))) {
             return (uintptr_t)_dyld_get_image_header(i);
         }
     }
     return 0;
 }
 
-// ─── Khởi động có delay ──────────────────────────────────────────────────────
+// ─── Khởi động tuần tự có retry ──────────────────────────────────────────────
 static void tryInit(int attempt) {
     uintptr_t base = findIL2CppBase();
     if (base == 0 || !IL2CPP::get().init(base)) {
+        LOG("IL2CPP not ready (attempt %d)", attempt);
         if (attempt < 10) {
-            dispatch_after(
-                dispatch_time(DISPATCH_TIME_NOW, 2*NSEC_PER_SEC),
-                dispatch_get_main_queue(),
-                ^{ tryInit(attempt + 1); });
-        } else {
-            LOG("IL2CPP init failed after 10 attempts");
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2*NSEC_PER_SEC),
+                           dispatch_get_main_queue(), ^{ tryInit(attempt + 1); });
         }
         return;
     }
-    LOG("IL2CPP OK, base=0x%lx (attempt %d)", base, attempt);
+    LOG("IL2CPP OK (attempt %d)", attempt);
 
+    // Lua trước
     initLua();
 
-    if (!hookMTKView()) {
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 1*NSEC_PER_SEC),
-                       dispatch_get_main_queue(), ^{ hookMTKView(); });
-    }
-
-    dispatch_after(
-        dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)),
-        dispatch_get_main_queue(),
-    ^{
-        UIWindow* window = nil;
-        for (UIWindowScene* scene in [UIApplication sharedApplication].connectedScenes) {
-            if ([scene isKindOfClass:[UIWindowScene class]] &&
-                scene.activationState == UISceneActivationStateForegroundActive) {
-                window = scene.windows.firstObject;
-                break;
-            }
-        }
-        if (!window) window = [UIApplication sharedApplication].windows.firstObject;
-        UIView* view = window.rootViewController.view;
-        if (view) initImGui(view);
+    // Overlay sau 0.5s
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5*NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        setupOverlay();
     });
 }
 
-// ─── Constructor ─────────────────────────────────────────────────────────────
+// ─── Entry point ─────────────────────────────────────────────────────────────
 __attribute__((constructor))
 static void rg_main() {
-    LOG("RGAutoKill injected — com.chillyroom.soulknightprequel.gl");
-    dispatch_after(
-        dispatch_time(DISPATCH_TIME_NOW, 3*NSEC_PER_SEC),
-        dispatch_get_main_queue(),
-        ^{ tryInit(0); });
+    LOG("RGAutoKill injected — SKP");
+    // Chờ 4s để game load xong rồi mới init
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 4*NSEC_PER_SEC),
+                   dispatch_get_main_queue(), ^{ tryInit(0); });
 }

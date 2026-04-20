@@ -237,6 +237,12 @@ function OnDraw()
     speedFrameTick = speedFrameTick + 1
     killTick()
     expTick()
+    -- Canh kich thuoc menu vua voi man hinh
+    local sw, sh = ImGui.GetDisplaySize()
+    local mw = math.min(420, sw * 0.75)
+    local mh = math.min(520, sh * 0.80)
+    ImGui.SetNextWindowSize(mw, mh)
+    ImGui.SetNextWindowPos((sw - mw) * 0.5, (sh - mh) * 0.5)
     if ImGui.Begin("RG AutoKill + OneHit + EXP + Speed") then
         ImGui.TextColored(1, 0.84, 0, 1, "== PHUONGIOS ==")
         ImGui.Separator()

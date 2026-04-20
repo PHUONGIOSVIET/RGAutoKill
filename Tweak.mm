@@ -17,6 +17,7 @@ extern "C" {
 }
 
 #include "vendor/imgui/imgui.h"
+#include "vendor/imgui/imgui_internal.h"   // để truy cập Windows list
 #include "vendor/imgui/backends/imgui_impl_metal.h"
 #include "backends/imgui_impl_uikit.h"
 #include "bridge/il2cpp.h"
@@ -93,11 +94,23 @@ static void callOnDraw() {
                             (float)size.height / self.contentScaleFactor);
 }
 
-// Chỉ bắt touch khi ImGui muốn, còn lại pass through game
+// Chỉ bắt touch khi điểm chạm nằm trong ImGui window, còn lại pass through game
 - (UIView*)hitTest:(CGPoint)pt withEvent:(UIEvent*)e {
-    UIView* hit = [super hitTest:pt withEvent:e];
-    if (hit == self && !ImGui::GetIO().WantCaptureMouse) return nil;
-    return hit;
+    if (!gImGuiReady) return nil;
+    ImGuiContext* ctx = ImGui::GetCurrentContext();
+    if (!ctx) return nil;
+    // pt là point theo UIKit (đã scale). ImGui dùng logical pixel cùng scale -> so sánh trực tiếp.
+    for (int i = 0; i < ctx->Windows.Size; i++) {
+        ImGuiWindow* w = ctx->Windows[i];
+        if (!w || !w->WasActive) continue;
+        if (w->Flags & ImGuiWindowFlags_NoInputs) continue;
+        if (w->Hidden) continue;
+        if (pt.x >= w->Pos.x && pt.x < w->Pos.x + w->Size.x &&
+            pt.y >= w->Pos.y && pt.y < w->Pos.y + w->Size.y) {
+            return [super hitTest:pt withEvent:e];
+        }
+    }
+    return nil;
 }
 - (void)touchesBegan:(NSSet<UITouch*>*)t withEvent:(UIEvent*)e {
     ImGui_ImplUIKit_HandleTouch(t, self, true);
@@ -146,13 +159,13 @@ static void setupOverlay() {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
-    io.FontGlobalScale                    = 2.4f;
+    io.FontGlobalScale                    = 1.5f;
     io.ConfigFlags                       |= ImGuiConfigFlags_NoMouseCursorChange;
     io.DisplaySize                        = ImVec2(frame.size.width, frame.size.height);
     io.DisplayFramebufferScale            = ImVec2(win.screen.scale, win.screen.scale);
 
     ImGui::StyleColorsDark();
-    ImGui::GetStyle().ScaleAllSizes(2.2f);
+    ImGui::GetStyle().ScaleAllSizes(1.3f);
     ImGui::GetStyle().WindowRounding   = 8.0f;
     ImGui::GetStyle().FrameRounding    = 4.0f;
     ImGui::GetStyle().Alpha            = 0.95f;

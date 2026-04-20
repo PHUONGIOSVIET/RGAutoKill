@@ -234,18 +234,56 @@ static int imgui_TextColored(lua_State* L) {
     ImGui::TextColored(ImVec4(r,g,b,a), "%s", t);
     return 0;
 }
+static int imgui_SetNextWindowSize(lua_State* L) {
+    float w = (float)luaL_checknumber(L, 1);
+    float h = (float)luaL_checknumber(L, 2);
+    int cond = (int)luaL_optinteger(L, 3, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(w, h), cond);
+    return 0;
+}
+static int imgui_SetNextWindowPos(lua_State* L) {
+    float x = (float)luaL_checknumber(L, 1);
+    float y = (float)luaL_checknumber(L, 2);
+    int cond = (int)luaL_optinteger(L, 3, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImVec2(x, y), cond);
+    return 0;
+}
+static int imgui_GetDisplaySize(lua_State* L) {
+    ImVec2 s = ImGui::GetIO().DisplaySize;
+    lua_pushnumber(L, s.x);
+    lua_pushnumber(L, s.y);
+    return 2;
+}
+static int imgui_SetNextWindowCollapsed(lua_State* L) {
+    bool v = lua_toboolean(L, 1) != 0;
+    int cond = (int)luaL_optinteger(L, 2, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowCollapsed(v, cond);
+    return 0;
+}
+static int imgui_BeginEx(lua_State* L) {
+    // BeginEx(title, flags)
+    const char* t = luaL_checkstring(L, 1);
+    int flags = (int)luaL_optinteger(L, 2, 0);
+    lua_pushboolean(L, ImGui::Begin(t, nullptr, flags) ? 1 : 0);
+    return 1;
+}
 
 static const luaL_Reg imgui_lib[] = {
-    { "Begin",       imgui_Begin       },
-    { "End",         imgui_End         },
-    { "Checkbox",    imgui_Checkbox    },
-    { "SliderFloat", imgui_SliderFloat },
-    { "Button",      imgui_Button      },
-    { "Text",        imgui_Text        },
-    { "SameLine",    imgui_SameLine    },
-    { "Separator",   imgui_Separator   },
-    { "InputText",   imgui_InputText   },
-    { "TextColored", imgui_TextColored },
+    { "Begin",                 imgui_Begin       },
+    { "BeginEx",               imgui_BeginEx     },
+    { "End",                   imgui_End         },
+    { "Checkbox",              imgui_Checkbox    },
+    { "SliderFloat",           imgui_SliderFloat },
+    { "Button",                imgui_Button      },
+    { "Text",                  imgui_Text        },
+    { "SameLine",              imgui_SameLine    },
+    { "Separator",             imgui_Separator   },
+    { "InputText",             imgui_InputText   },
+    { "TextColored",           imgui_TextColored },
+    { "SetNextWindowSize",     imgui_SetNextWindowSize },
+    { "SetNextWindowPos",      imgui_SetNextWindowPos  },
+    { "SetNextWindowCollapsed",imgui_SetNextWindowCollapsed },
+    { "GetDisplaySize",        imgui_GetDisplaySize },
     { nullptr, nullptr }
 };
 
